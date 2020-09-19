@@ -59,7 +59,7 @@ export class Utils {
 
     /**
      * Optimized version of random sampling from an array, as implemented in Python
-     * 
+     *
      *
         Chooses k unique random elements from a population sequence or set.
 
@@ -86,7 +86,7 @@ export class Utils {
         a larger number of selections, the array tracking method is
         preferred since the list takes less space than the
         set and it doesn't suffer from frequent reselections.
-     * 
+     *
      * @param {*} array The array to sample values from randomly
      * @param {*} num The number of elements to sample randomly
      */
@@ -531,13 +531,39 @@ export class Utils {
 
     }
 
+    // Compare two arrays of booleans of isna() function to align data in correlation functions.
+    __bit_wise_nanarray(values_1, values_2) {
+      let a = tf.tensor1d(values_1, "bool")
+      let b = tf.tensor1d(values_2, "bool")
+
+      return tf.logicalNot(a).logicalAnd(tf.logicalNot(b))
+    }
+
     //check a variable is a function
     __is_function(variable) {
 
         return typeof variable == "function"
     }
 
+    __rankify(values, size) {
+      let tmp_rank = [];
 
+      for (let i = 0; i < size; i++) {
+        let r = 1, s = 1;
+
+        for (let j = 0; j < size; j++) {
+          if (i !== j) {
+            if (values[j] < values[i])
+              r++
+            if (values[j] == values[i])
+              s++
+          }
+        }
+        tmp_rank.push(tf.scalar(r).add(tf.mul(tf.scalar(s - 1),tf.scalar(0.5))).arraySync())
+      }
+
+      return  tf.tensor1d(tmp_rank, "float32")
+    }
 
     //generate a random list
     __randgen(num, start, end) {
@@ -591,7 +617,7 @@ export class Utils {
     }
 
 
-    //maps int values (0, 1) to bools (false, true) 
+    //maps int values (0, 1) to bools (false, true)
     __map_int_to_bool(arr, dim) {
         let new_arr = []
         if (dim == 2) {
@@ -691,8 +717,87 @@ export class Utils {
         // tests if global scope is binded to window
         return isNode()
     }
+    /**
+     * Reference https://en.wikipedia.org/wiki/Kendall_rank_correlation_coefficient#Tau-b
+     * @param {Array} X
+     * @param {Array} Y
+     */
+    __kendall_corr(X, Y) {
+      let n = Y.length
+
+      let n0 = tf.scalar((n * (n - 1)) / 2)
+      let [ n1, n2 ] = Utils.__ties_pairs_kendall(X, Y)
+      let [ c_pairs, d_pairs ] = Utils.__pairs_kendall(X, Y, n)
+
+      return parseFloat(
+        tf.div(
+          tf.sub(
+            tf.scalar(c_pairs), tf.scalar(d_pairs)
+          ),
+          tf.sqrt(tf.mul(tf.sub(n0, n1), tf.sub(n0, n2)))
+        )
+        .arraySync()
+      )
+    }
+
+    static __pairs_kendall(X, Y, n) {
+      let c_pairs = 0, d_pairs = 0
+
+      /**
+       * This way is O(n^2) time complexity, but can be improve to O(nlogn) implementing
+       * merge sort and bubble sort strategy.
+       */
+      for (let i = 0; i < (n % 2 === 0 ? n : n -1); i++) {
+          for (let j = i + 1; j < n; j++) {
+              if ((X[i] < X[j] && Y[i] < Y[j]) ||
+                  (X[i] > X[j] && Y[i] > Y[j])) {
+                  c_pairs += 1
+              } else if ((X[i] > X[j] && Y[i] < Y[j]) ||
+                      (X[i] < X[j] && Y[i] > Y[j])) {
+                  d_pairs += 1
+              }
+          }
+      }
+
+      return [c_pairs, d_pairs]
+    }
+
+    static __ties_pairs_kendall(X, Y) {
+      let m_ti = new Map()
+      let m_uj = new Map()
+      let a_ti = []
+      let a_uj = []
+
+      X.forEach(function(value) {
+        if (!m_ti.get(value)) {
+          m_ti.set(value, 0)
+        }
+        m_ti.set(value, m_ti.get(value) + 1)
+      });
+
+      m_ti.forEach(function (value) {
+        if (value > 1) {
+          a_ti.push(value)
+        }
+      })
 
 
+      Y.forEach(function(value) {
+        if (!m_uj.get(value)) {
+          m_uj.set(value, 0)
+        }
+        m_uj.set(value, m_uj.get(value) + 1)
+      });
+
+      m_uj.forEach(function (value) {
+        if (value > 1) {
+          a_uj.push(value)
+        }
+      })
+      let ti = tf.sum(tf.div(tf.mul(a_ti, tf.sub(a_ti, tf.scalar(1))), tf.scalar(2)))
+      let uj = tf.sum(tf.div(tf.mul(a_uj, tf.sub(a_uj, tf.scalar(1))), tf.scalar(2)))
+      return [ti, uj]
+    }
 }
 
 
