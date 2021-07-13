@@ -7,3 +7,5 @@ danfojs/data
 .idea/
 
 dist/
+build
+lib/
